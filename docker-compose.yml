@@ -6,7 +6,7 @@ services:
   # ==========================
 
   auth-service:
-    image: your-ecr-repo-url/auth-service:latest
+    image: mainguyenuit/auth-service:latest
     container_name: auth-service
     restart: always
     ports:
@@ -26,7 +26,7 @@ services:
       - app-network
 
   driver-service:
-    image: your-ecr-repo-url/driver-service:latest
+    image: mainguyenuit/driver-service:latest
     container_name: driver-service
     restart: always
     ports:
@@ -43,7 +43,7 @@ services:
       - app-network
 
   trip-service:
-    image: your-ecr-repo-url/trip-service:latest
+    image: mainguyenuit/trip-service:latest
     container_name: trip-service
     restart: always
     ports:
@@ -183,6 +183,78 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
 
+  # ==========================
+  #  ELK Stack (Elasticsearch, Logstash, Kibana)
+  # ==========================
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    restart: always
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-network
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    restart: always
+    ports:
+      - "5000:5000"
+      - "5044:5044"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    volumes:
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    restart: always
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - app-network
+
 # ==========================
 #  Networks
 # ==========================
@@ -202,3 +274,4 @@ volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
+  elasticsearch_data:
